@@ -24,7 +24,7 @@ int main(int argc, char** argv)
      // 그런데 아마 다른 library들도 다 있을 것 같은 … ?
           
      stringstream ss;
-     load_file_to_stringstream("my_ctxt_pub", ss);
+     load_file_to_stringstream("my_ctxt", ss);
      Ciphertext ctxt;
      ctxt.load(context, ss);  
 

@@ -2,7 +2,7 @@
 
 ```
 git clone https://github.com/yonghaason/SEAL_TEST.git --recursive
-cd SEAL_TEST/thirdparty/seal
+cd SEAL_TEST/thirdparty/SEAL
 cmake -S . -B build \
  -DSEAL_USE_INTEL_HEXL=ON \
  -DSEAL_BUILD_EXAMPLES=ON \ 

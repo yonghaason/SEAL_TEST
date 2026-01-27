@@ -14,5 +14,5 @@ cd ../..
 cmake -S . -B build
 cmake --build build
 cd build
-make
-'''
+make -j8
+```

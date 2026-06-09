@@ -1,6 +1,6 @@
 build/
 exec/example_save.cpp
 thirdparty/install/
-
-my_ctxt_sym
-my_sk
+__pycache__/
+.vscode/
+full/

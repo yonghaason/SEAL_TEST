@@ -1,6 +1,2 @@
 build/
-exec/example_save.cpp
-thirdparty/install/
-__pycache__/
-.vscode/
-full/
+build-*/

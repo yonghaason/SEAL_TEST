@@ -44,7 +44,6 @@ cmake -S . -B build
   - `exp4_rotation.cpp` : rotation 과 회전키 전략
 - `solutions/` : 위 실험들의 정답 (학생 파일과 같은 주석 구조)
 - `docs/plan.md` : 실습 전체 계획 (작성 중, 2회차 CKKS 실험 5~7 은 아직 설계 전)
-- `docs/lab1_notes.md` : 1회차 수업 진행 노트 (실험별 설명 순서, 실측값, 예상 질문)
 
 ## 빌드와 실행
 

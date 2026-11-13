@@ -42,8 +42,12 @@ cmake -S . -B build
   - `exp2_modswitch.cpp` : modulus switching (BGV/BFV)
   - `exp3_lazy.cpp` : lazy relinearization
   - `exp4_rotation.cpp` : rotation 과 회전키 전략
+  - `exp5_ckks.cpp` : CKKS 기본 (scale, rescale, 레벨 맞추기)
+  - `exp6_sigmoid.cpp` : 시그모이드 다항식 근사
+  - `exp7_logreg.cpp` : MNIST (0 vs 1) 로지스틱 회귀 추론. `mnist_data.h` 는 모델과 테스트 이미지
 - `solutions/` : 위 실험들의 정답 (학생 파일과 같은 주석 구조)
-- `docs/plan.md` : 실습 전체 계획 (작성 중, 2회차 CKKS 실험 5~7 은 아직 설계 전)
+- `tools/make_mnist_data.py` : `exec/mnist_data.h` 를 만든 스크립트 (실습에는 필요 없음)
+- `docs/plan.md` : 실습 전체 계획
 
 ## 빌드와 실행
 

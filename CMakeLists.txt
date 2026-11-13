@@ -23,6 +23,9 @@ set(EXECUTABLES
     exp2_modswitch
     exp3_lazy
     exp4_rotation
+    exp5_ckks
+    exp6_sigmoid
+    exp7_logreg
 )
 foreach(name ${EXECUTABLES})
     set(src exec/${name}.cpp)

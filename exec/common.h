@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <iomanip>
@@ -83,6 +85,15 @@ inline void print_compare(const std::string &label, double theory, int measured)
     std::cout.unsetf(std::ios::fixed);
 }
 
+// 위와 같지만 측정값이 실수일 때 (CKKS 실험).
+inline void print_compare(const std::string &label, double theory, double measured)
+{
+    std::cout << std::left << std::setw(16) << label << std::right << std::fixed << std::setprecision(1)
+              << "  theory = " << std::setw(5) << theory << "   measured = " << std::setw(5) << measured
+              << "   diff = " << std::setw(5) << measured - theory << "\n";
+    std::cout.unsetf(std::ios::fixed);
+}
+
 // 암호문을 복호화해서 expected 와 모든 슬롯이 같은지 출력한다.
 inline void print_check(
     const std::string &label, const seal::Ciphertext &ct, const std::vector<uint64_t> &expected,
@@ -95,6 +106,46 @@ inline void print_check(
     encoder.decode(pt, got);
     std::cout << std::left << std::setw(24) << label << std::right
               << (got == expected ? " decrypt OK" : " decrypt FAIL") << "\n";
+}
+
+// CKKS 암호문의 scale (비트), 크기, 레벨을 출력한다. CKKS 에는 노이즈 예산이 없다.
+// scale: 슬롯 값에 곱해져 있는 배율 Delta. 곱하면 Delta^2 이 되고, rescale 하면 다시 Delta 근처로 돌아온다.
+// 반환값: log2(scale)
+inline double print_ct_ckks(const std::string &label, const seal::Ciphertext &ct, const seal::SEALContext &context)
+{
+    require_ct(label, ct);
+    int level = context.get_context_data(ct.parms_id())->chain_index();
+    double scale_bits = std::log2(ct.scale());
+    std::cout << std::left << std::setw(24) << label << std::right << std::fixed << std::setprecision(1)
+              << " log2(scale) = " << std::setw(5) << scale_bits << "   size = " << ct.size()
+              << "   level = " << level << "\n";
+    std::cout.unsetf(std::ios::fixed);
+    return scale_bits;
+}
+
+// CKKS 암호문을 복호화해서 expected 와 비교하고, 슬롯별 오차 중 가장 큰 값을 출력한다.
+// expected 가 슬롯 수보다 짧으면 앞에서부터 expected.size() 개의 슬롯만 비교한다.
+// 반환값: 정밀도 (비트) = -log2(최대 오차). 클수록 정확하다.
+inline double print_error(
+    const std::string &label, const seal::Ciphertext &ct, const std::vector<double> &expected,
+    seal::Decryptor &decryptor, seal::CKKSEncoder &encoder)
+{
+    require_ct(label, ct);
+    seal::Plaintext pt;
+    decryptor.decrypt(ct, pt);
+    std::vector<double> got;
+    encoder.decode(pt, got);
+    double err = 0.0;
+    for (size_t i = 0; i < expected.size() && i < got.size(); i++)
+    {
+        err = std::max(err, std::abs(got[i] - expected[i]));
+    }
+    double precision = -std::log2(err);
+    std::cout << std::left << std::setw(24) << label << std::right << " max error = " << std::scientific
+              << std::setprecision(2) << err << std::fixed << std::setprecision(1)
+              << "   precision = " << std::setw(5) << precision << " bits\n";
+    std::cout.unsetf(std::ios::floatfield);
+    return precision;
 }
 
 // (a * b) mod t. 40비트 t 에서도 넘치지 않도록 128비트로 계산한다.

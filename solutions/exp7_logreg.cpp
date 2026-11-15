@@ -1,6 +1,9 @@
 //   빌드: cmake --build build --target exp7_logreg
-//   실행: ./build/exp7_logreg
+//   실행: ./build/exp7_logreg            (내장 이미지 0 번)
+//         ./build/exp7_logreg 7          (내장 이미지 0 ~ 10 번 중 하나)
+//         ./build/exp7_logreg my.txt     (tools/image_to_vector.py 로 만든 784 개 값 파일)
 #include <cmath>
+#include <fstream>
 #include "common.h"
 #include "mnist_data.h"
 
@@ -10,103 +13,111 @@ using namespace seal;
 // 이미지 한 장이 차지하는 슬롯 수 (784 를 2 의 거듭제곱으로 올림). 남는 슬롯은 0 으로 둔다.
 const size_t BLOCK = 1024;
 
-double sigmoid(double z)
+// 입력 이미지 (길이 784, 값 0 ~ 1) 를 정한다. 인자가 없으면 내장 이미지 0 번.
+vector<double> load_image(int argc, char **argv, string &name)
 {
-    return 1.0 / (1.0 + exp(-z));
-}
-double sigmoid3_plain(double z)
-{
-    return 0.5 + 0.197 * z - 0.004 * z * z * z;
+    string arg = (argc > 1) ? argv[1] : "0";
+    vector<double> x;
+    if (arg.find_first_not_of("0123456789") == string::npos && stoi(arg) < MNIST_IMAGES)
+    {
+        int idx = stoi(arg);
+        for (int j = 0; j < MNIST_DIM; j++)
+        {
+            x.push_back(mnist_pixel[idx][j] / 255.0);
+        }
+        name = "built-in image " + arg + " (label " + to_string(mnist_label[idx]) + ")";
+        return x;
+    }
+    ifstream in(arg);
+    double v;
+    while (in >> v)
+    {
+        x.push_back(v);
+    }
+    if (x.size() != static_cast<size_t>(MNIST_DIM))
+    {
+        cerr << "[오류] '" << arg << "' 에서 값 784 개를 읽지 못했습니다 (읽은 개수: " << x.size() << ").\n"
+             << "       내장 이미지는 0 ~ " << MNIST_IMAGES - 1 << " 번입니다.\n";
+        exit(1);
+    }
+    name = "file " + arg;
+    return x;
 }
 
-// 이미지 first 번과 first + 1 번을 나란히 출력한다 (28 x 28 중 숫자가 있는 가운데 부분만).
-void print_images(int first)
+// 28 x 28 이미지를 글자로 출력한다.
+void print_image(const vector<double> &x)
 {
-    for (int r = 4; r < 24; r++)
+    for (int r = 0; r < 28; r++)
     {
-        for (int idx = first; idx < first + 2; idx++)
+        for (int c = 0; c < 28; c++)
         {
-            for (int c = 4; c < 23; c++)
-            {
-                int p = mnist_pixel[idx][r * 28 + c];
-                cout << (p > 160 ? "##" : p > 60 ? "++" : "  ");
-            }
-            cout << "  ";
+            double p = x[r * 28 + c];
+            cout << (p > 0.63 ? "##" : p > 0.24 ? "++" : "  ");
         }
         cout << "\n";
     }
 }
 
-// 암호문 ct_z 의 슬롯마다 0.5 + 0.197 z - 0.004 z^3 을 계산해서 돌려준다 (실험 6 과 같은 함수).
-Ciphertext sigmoid3(const Ciphertext &ct_z, Evaluator &evaluator, CKKSEncoder &encoder,
-                    const RelinKeys &relin_keys, double scale)
+// 암호문 ct_x 와 평문 벡터 w_slots 를 슬롯별로 곱하고, 1024 칸 블록마다 합을 구한 뒤 (회전-합), b_slots 를 더한다.
+// 결과 암호문의 슬롯 1024 j 에  (블록 j 의 내적) + b_slots[1024 j]  가 들어간다. 나머지 슬롯은 쓰지 않는다.
+Ciphertext block_inner_product(const Ciphertext &ct_x, const vector<double> &w_slots, const vector<double> &b_slots,
+                               Evaluator &evaluator, CKKSEncoder &encoder, const GaloisKeys &galois_keys,
+                               double scale)
 {
-    // z^2: 곱셈 -> relinearize -> rescale
-    Ciphertext ct_z2;
-    evaluator.multiply(ct_z, ct_z, ct_z2);
-    evaluator.relinearize_inplace(ct_z2, relin_keys);
-    evaluator.rescale_to_next_inplace(ct_z2);
+    // (1) 슬롯별 곱: w_slots 를 인코딩해서 ct_x 에 곱하고 rescale
+    Plaintext pt_w;
+    encoder.encode(w_slots, scale, pt_w);
+    Ciphertext ct_z;
+    evaluator.multiply_plain(ct_x, pt_w, ct_z);
+    evaluator.rescale_to_next_inplace(ct_z);
 
-    // -0.004 z: 상수를 곱하고 rescale
-    Plaintext pt_c3;
-    encoder.encode(-0.004, ct_z.parms_id(), scale, pt_c3);
-    Ciphertext ct_c3z;
-    evaluator.multiply_plain(ct_z, pt_c3, ct_c3z);
-    evaluator.rescale_to_next_inplace(ct_c3z);
+    // (2) 회전-합: step = 512, 256, ..., 1 에 대해 ct_z 를 step 칸 회전한 것을 ct_z 에 더한다
+    //     10 번 하면 슬롯 j 에 원래 슬롯 j ~ j + 1023 의 합이 들어간다
+    for (int step = BLOCK / 2; step >= 1; step /= 2)
+    {
+        Ciphertext ct_rot;
+        evaluator.rotate_vector(ct_z, step, galois_keys, ct_rot);
+        evaluator.add_inplace(ct_z, ct_rot);
+    }
 
-    // -0.004 z^3 = z^2 * (-0.004 z): 곱셈 -> relinearize -> rescale
-    Ciphertext ct_c3z3;
-    evaluator.multiply(ct_z2, ct_c3z, ct_c3z3);
-    evaluator.relinearize_inplace(ct_c3z3, relin_keys);
-    evaluator.rescale_to_next_inplace(ct_c3z3);
+    // (3) b_slots 더하기: ct_z 와 같은 레벨, 같은 scale 로 인코딩해서 add_plain
+    Plaintext pt_b;
+    encoder.encode(b_slots, ct_z.parms_id(), ct_z.scale(), pt_b);
+    evaluator.add_plain_inplace(ct_z, pt_b);
 
-    // 0.197 z: 상수를 곱하고 rescale, 그리고 ct_c3z3 와 같은 레벨로 내리기
-    Plaintext pt_c1;
-    encoder.encode(0.197, ct_z.parms_id(), scale, pt_c1);
-    Ciphertext ct_c1z;
-    evaluator.multiply_plain(ct_z, pt_c1, ct_c1z);
-    evaluator.rescale_to_next_inplace(ct_c1z);
-    evaluator.mod_switch_to_inplace(ct_c1z, ct_c3z3.parms_id());
-
-    // scale 을 Delta 로 맞추고 더하기. 상수 0.5 는 같은 레벨로 인코딩해서 add_plain
-    ct_c3z3.scale() = scale;
-    ct_c1z.scale() = scale;
-    Ciphertext ct_out;
-    evaluator.add(ct_c3z3, ct_c1z, ct_out);
-    Plaintext pt_c0;
-    encoder.encode(0.5, ct_out.parms_id(), scale, pt_c0);
-    evaluator.add_plain_inplace(ct_out, pt_c0);
-
-    return ct_out;
+    return ct_z;
 }
 
-// 암호문을 복호화해서 이미지별 결과 (슬롯 0, BLOCK, 2 BLOCK, ...) 만 꺼낸다.
-vector<double> decrypt_results(const string &label, const Ciphertext &ct, Decryptor &decryptor,
-                               CKKSEncoder &encoder)
+// 암호문을 복호화해서 모든 슬롯 값을 돌려준다.
+vector<double> decrypt_slots(const string &label, const Ciphertext &ct, Decryptor &decryptor, CKKSEncoder &encoder)
 {
     require_ct(label, ct);
     Plaintext pt;
     decryptor.decrypt(ct, pt);
     vector<double> slots;
     encoder.decode(pt, slots);
-    vector<double> out(MNIST_IMAGES);
-    for (int i = 0; i < MNIST_IMAGES; i++)
-    {
-        out[i] = slots[BLOCK * i];
-    }
-    return out;
+    return slots;
 }
 
-int main()
+// 가장 큰 값의 위치
+int argmax(const vector<double> &v)
 {
-    // 곱셈 깊이 3 (가중치 곱 1 + 시그모이드 근사 2) -> Delta 크기 소수 3 개
-    // log Pq = 240 이라 n = 8192 (최대 218) 로는 안 되고 n = 16384 가 필요하다 (실험 0)
+    return static_cast<int>(max_element(v.begin(), v.end()) - v.begin());
+}
+
+int main(int argc, char **argv)
+{
+    string image_name;
+    vector<double> x = load_image(argc, argv, image_name);
+
+    // 곱셈 깊이 1 (가중치 곱 한 번) -> Delta 크기 소수 1 개
+    // n 은 안전성이 아니라 슬롯 수 때문에 크게 잡는다: 슬롯 n / 2 = 16384 개 = 1024 칸 블록 16 개
     double scale = pow(2.0, 40);
 
     EncryptionParameters parms(scheme_type::ckks);
-    size_t n = 16384;
+    size_t n = 32768;
     parms.set_poly_modulus_degree(n);
-    parms.set_coeff_modulus(CoeffModulus::Create(n, { 60, 40, 40, 40, 60 }));
+    parms.set_coeff_modulus(CoeffModulus::Create(n, { 60, 40, 60 }));
 
     SEALContext context(parms);
     print_params(context);
@@ -115,8 +126,6 @@ int main()
     SecretKey secret_key = keygen.secret_key();
     PublicKey public_key;
     keygen.create_public_key(public_key);
-    RelinKeys relin_keys;
-    keygen.create_relin_keys(relin_keys);
 
     // 회전 키는 필요한 칸 수 (512, 256, ..., 2, 1) 만 만든다 (실험 4)
     vector<int> steps;
@@ -131,120 +140,123 @@ int main()
     Decryptor decryptor(context, secret_key);
     Evaluator evaluator(context);
     CKKSEncoder encoder(context);
-
-    // 슬롯 n / 2 = 8192 개에 이미지 8 장을 1024 칸씩 나눠 담는다
-    //   x_slots = [ 이미지 0 (784) 0 ... 0 | 이미지 1 (784) 0 ... 0 | ... ]
-    //   w_slots = [ 가중치 w (784) 0 ... 0 | 가중치 w (784) 0 ... 0 | ... ]
     size_t slots = encoder.slot_count();
-    vector<double> x_slots(slots, 0.0), w_slots(slots, 0.0);
-    // 비교용 평문 계산: 로짓 z = <w, x> + b, 시그모이드, 3차 근사
-    vector<double> z_plain(MNIST_IMAGES), prob_exact(MNIST_IMAGES), prob_approx(MNIST_IMAGES);
-    for (int i = 0; i < MNIST_IMAGES; i++)
+
+    // 비교용 평문 계산: 점수 z = W x + b (클래스마다 내적 하나)
+    vector<double> z_plain(MNIST_CLASSES);
+    for (int k = 0; k < MNIST_CLASSES; k++)
     {
-        double z = mnist_b;
+        z_plain[k] = mnist_b[k];
         for (int j = 0; j < MNIST_DIM; j++)
         {
-            x_slots[BLOCK * i + j] = mnist_pixel[i][j] / 255.0;
-            w_slots[BLOCK * i + j] = mnist_w[j];
-            z += mnist_w[j] * x_slots[BLOCK * i + j];
+            z_plain[k] += mnist_w[k][j] * x[j];
         }
-        z_plain[i] = z;
-        prob_exact[i] = sigmoid(z);
-        prob_approx[i] = sigmoid3_plain(z);
     }
 
-    cout << "\nimage 0 (label " << mnist_label[0] << ") and image 1 (label " << mnist_label[1] << ")\n";
-    print_images(0);
+    cout << "\ninput: " << image_name << "\n";
+    print_image(x);
     wait_enter("다음: 클라이언트가 이미지를 암호화");
 
     // ---------------------------------------------------------------
-    // 1. 클라이언트: 이미지 8 장을 암호문 하나로 암호화
+    // 1. 클라이언트: 이미지를 블록 10 개에 똑같이 복사해서 암호문 하나로 암호화
+    //    x_slots = [ x (784) 0 ... 0 | x (784) 0 ... 0 | ... (10 번) ... | 0 ... ]
     // ---------------------------------------------------------------
+    vector<double> x_slots(slots, 0.0);
+    for (int k = 0; k < MNIST_CLASSES; k++)
+    {
+        for (int j = 0; j < MNIST_DIM; j++)
+        {
+            x_slots[BLOCK * k + j] = x[j];
+        }
+    }
     Plaintext pt_x;
     encoder.encode(x_slots, scale, pt_x);
     Ciphertext ct_x;
     encryptor.encrypt(pt_x, ct_x);
-    print_ct_ckks("fresh (8 images)", ct_x, context);
+    print_ct_ckks("fresh", ct_x, context);
 
-    wait_enter("다음: 서버가 암호문 상태로 로짓 계산");
+    wait_enter("다음: 서버가 (a) 한 행씩 계산");
 
     // ---------------------------------------------------------------
-    // 2. 서버: 로짓 z = <w, x> + b  (서버는 secret key 가 없다)
+    // 2. 서버 (a): 한 행씩. 클래스 k 마다 W 의 k 번째 행을 블록 0 에만 넣고 내적 -> 암호문 10 개
+    //    w_slots = [ W[k] (784) 0 ... 0 | 0 ... ],  결과는 슬롯 0
     // ---------------------------------------------------------------
-    Timer tm_logit;
-
-    // (a) 슬롯별 곱: 가중치 w_slots 를 인코딩해서 ct_x 에 곱하고 rescale -> ct_z
-    Plaintext pt_w;
-    encoder.encode(w_slots, scale, pt_w);
-    Ciphertext ct_z;
-    evaluator.multiply_plain(ct_x, pt_w, ct_z);
-    evaluator.rescale_to_next_inplace(ct_z);
-
-    // (b) 회전-합: step = 512, 256, ..., 1 에 대해 ct_z 를 step 칸 회전한 것을 ct_z 에 더한다
-    //     10 번 하면 슬롯 j 에 원래 슬롯 j ~ j + 1023 의 합이 들어간다 -> 슬롯 1024 i = 이미지 i 의 내적
-    for (int step = BLOCK / 2; step >= 1; step /= 2)
+    Timer tm_a;
+    vector<Ciphertext> ct_rows(MNIST_CLASSES);
+    for (int k = 0; k < MNIST_CLASSES; k++)
     {
-        Ciphertext ct_rot;
-        evaluator.rotate_vector(ct_z, step, galois_keys, ct_rot);
-        evaluator.add_inplace(ct_z, ct_rot);
+        vector<double> w_slots(slots, 0.0), b_slots(slots, 0.0);
+        for (int j = 0; j < MNIST_DIM; j++)
+        {
+            w_slots[j] = mnist_w[k][j];
+        }
+        b_slots[0] = mnist_b[k];
+        ct_rows[k] = block_inner_product(ct_x, w_slots, b_slots, evaluator, encoder, galois_keys, scale);
     }
+    double ms_a = tm_a.ms();
+    print_ct_ckks("(a) row 0", ct_rows[0], context);
 
-    // (c) 상수 b 더하기: ct_z 와 같은 레벨, 같은 scale 로 인코딩해서 add_plain
-    Plaintext pt_b;
-    encoder.encode(mnist_b, ct_z.parms_id(), ct_z.scale(), pt_b);
-    evaluator.add_plain_inplace(ct_z, pt_b);
-
-    double ms_logit = tm_logit.ms();
-    print_ct_ckks("logit z", ct_z, context);
-
-    wait_enter("다음: 서버가 시그모이드 근사 계산");
+    wait_enter("다음: 서버가 (b) 블록에 나눠 담아 한 번에 계산");
 
     // ---------------------------------------------------------------
-    // 3. 서버: 확률 = sigmoid3(z)
+    // 3. 서버 (b): W 의 행 10 개를 블록 10 개에 나눠 담아 내적 한 번 -> 암호문 1 개
+    //    w_slots = [ W[0] (784) 0 ... 0 | W[1] (784) 0 ... 0 | ... | W[9] (784) 0 ... 0 | 0 ... ]
+    //    b_slots: 슬롯 1024 k 에 b[k],  결과는 슬롯 1024 k
     // ---------------------------------------------------------------
-    Timer tm_sigmoid;
-    Ciphertext ct_prob = sigmoid3(ct_z, evaluator, encoder, relin_keys, scale);
-    double ms_sigmoid = tm_sigmoid.ms();
-    print_ct_ckks("sigmoid3(z)", ct_prob, context);
+    Timer tm_b;
+    vector<double> w_slots(slots, 0.0), b_slots(slots, 0.0);
+    for (int k = 0; k < MNIST_CLASSES; k++)
+    {
+        for (int j = 0; j < MNIST_DIM; j++)
+        {
+            w_slots[BLOCK * k + j] = mnist_w[k][j];
+        }
+        b_slots[BLOCK * k] = mnist_b[k];
+    }
+    require_filled("(b) w_slots", w_slots);
+    Ciphertext ct_packed = block_inner_product(ct_x, w_slots, b_slots, evaluator, encoder, galois_keys, scale);
+    double ms_b = tm_b.ms();
+    print_ct_ckks("(b) packed", ct_packed, context);
 
     wait_enter("다음: 클라이언트가 복호화");
 
     // ---------------------------------------------------------------
-    // 4. 클라이언트: 복호화해서 확률이 0.5 보다 크면 1, 아니면 0 으로 판정
+    // 4. 클라이언트: 복호화해서 점수가 가장 큰 클래스를 고른다
     // ---------------------------------------------------------------
-    vector<double> z_ckks = decrypt_results("logit z", ct_z, decryptor, encoder);
-    vector<double> prob_ckks = decrypt_results("sigmoid3(z)", ct_prob, decryptor, encoder);
-
-    cout << "\n" << setw(5) << "image" << setw(7) << "label" << setw(10) << "z plain" << setw(10) << "z CKKS"
-         << setw(10) << "sigmoid" << setw(10) << "poly" << setw(10) << "CKKS" << setw(6) << "pred" << "\n";
-    double e_logit = 0, e_ckks = 0, e_approx = 0;
-    int correct = 0;
-    cout << fixed << setprecision(4);
-    for (int i = 0; i < MNIST_IMAGES; i++)
+    vector<double> z_a(MNIST_CLASSES), z_b(MNIST_CLASSES);
+    vector<double> packed = decrypt_slots("(b) packed", ct_packed, decryptor, encoder);
+    for (int k = 0; k < MNIST_CLASSES; k++)
     {
-        int pred = prob_ckks[i] > 0.5 ? 1 : 0;
-        correct += (pred == mnist_label[i]);
-        e_logit = max(e_logit, abs(z_ckks[i] - z_plain[i]));
-        e_ckks = max(e_ckks, abs(prob_ckks[i] - prob_approx[i]));
-        e_approx = max(e_approx, abs(prob_approx[i] - prob_exact[i]));
-        cout << setw(5) << i << setw(7) << mnist_label[i] << setw(10) << z_plain[i] << setw(10) << z_ckks[i]
-             << setw(10) << prob_exact[i] << setw(10) << prob_approx[i] << setw(10) << prob_ckks[i] << setw(6)
-             << pred << (pred == mnist_label[i] ? "  OK" : "  FAIL") << "\n";
+        z_a[k] = decrypt_slots("(a) row " + to_string(k), ct_rows[k], decryptor, encoder)[0];
+        z_b[k] = packed[BLOCK * k];
+    }
+
+    cout << "\n" << setw(6) << "class" << setw(12) << "plain" << setw(12) << "(a) rows" << setw(12) << "(b) packed"
+         << "\n";
+    double e_a = 0, e_b = 0;
+    cout << fixed << setprecision(4);
+    for (int k = 0; k < MNIST_CLASSES; k++)
+    {
+        e_a = max(e_a, abs(z_a[k] - z_plain[k]));
+        e_b = max(e_b, abs(z_b[k] - z_plain[k]));
+        cout << setw(6) << k << setw(12) << z_plain[k] << setw(12) << z_a[k] << setw(12) << z_b[k] << "\n";
     }
     cout.unsetf(ios::fixed);
+    cout << setw(6) << "pred" << setw(12) << argmax(z_plain) << setw(12) << argmax(z_a) << setw(12) << argmax(z_b)
+         << "\n";
 
-    //  - CKKS 오차: |복호화 결과 - 평문 계산|  (로짓, 확률 각각)
-    //  - 근사 오차: |다항식 - 시그모이드|
-    //  - key switching: 회전 10 번 + relinearize 2 번
-    cout << "\naccuracy: " << correct << " / " << MNIST_IMAGES << "\n";
-    cout << scientific << setprecision(2);
-    cout << "CKKS error (logit) = " << e_logit << "\n";
-    cout << "CKKS error (prob)  = " << e_ckks << "\n";
-    cout << "approx error       = " << e_approx << "\n";
-    cout << fixed << setprecision(1);
-    cout << "time: logit (10 rotations) = " << ms_logit << " ms,  sigmoid3 (2 relinearizations) = " << ms_sigmoid
-         << " ms\n";
-    cout.unsetf(ios::floatfield);
+    // 이론값: 회전 (key switching) 횟수 = 내적 횟수 x 10.  시간은 회전 횟수에 거의 비례한다 (실험 4)
+    //  - (a) 내적 10 번 -> 회전 100 번, 서버가 돌려주는 암호문 10 개
+    //  - (b) 내적  1 번 -> 회전  10 번, 서버가 돌려주는 암호문  1 개
+    cout << "\n" << left << setw(16) << "strategy" << right << setw(14) << "ciphertexts" << setw(12) << "rotations"
+         << setw(14) << "time" << setw(16) << "CKKS error" << "\n";
+    auto row = [](const string &name, int cts, int rotations, double ms, double err) {
+        cout << left << setw(16) << name << right << setw(14) << cts << setw(12) << rotations << fixed
+             << setprecision(1) << setw(11) << ms << " ms" << scientific << setprecision(2) << setw(16) << err << "\n";
+        cout.unsetf(ios::floatfield);
+    };
+    row("(a) row by row", MNIST_CLASSES, MNIST_CLASSES * 10, ms_a, e_a);
+    row("(b) packed", 1, 10, ms_b, e_b);
 
     return 0;
 }

@@ -59,6 +59,21 @@ inline void require_ct(const std::string &label, const seal::Ciphertext &ct)
     }
 }
 
+// 벡터가 전부 0 이면 (아직 채우는 코드를 안 썼으면) 안내 메시지를 내고 종료한다.
+inline void require_filled(const std::string &label, const std::vector<double> &v)
+{
+    for (double x : v)
+    {
+        if (x != 0.0)
+        {
+            return;
+        }
+    }
+    std::cout << std::flush;
+    std::cerr << "\n[오류] '" << label << "' 이 전부 0 입니다. 이 벡터를 채우는 코드를 썼는지 확인하세요.\n";
+    std::exit(1);
+}
+
 // BFV/BGV 암호문의 노이즈 예산, 크기, 레벨을 출력한다.
 // size: 보통 암호문은 2, 곱셈 직후 (relinearize 전) 에는 3.
 // level: modulus chain 에서의 위치. mod_switch_to_next 를 할 때마다 1 씩 줄어든다.

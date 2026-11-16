@@ -31,7 +31,7 @@ int main()
     double scale = pow(2.0, scale_bits);
 
     // q = { 60, scale_bits, scale_bits } + special prime 60
-    //  - rescale 은 q 의 마지막 RNS 소수로 나눈다. 그 소수가 Delta 와 비슷해야 scale 이 Delta 근처로 돌아온다
+    //  - rescale 은 q 의 마지막 RNS 소수 (q1) 로 나눈다. 그 소수가 Delta 와 비슷해야 scale 이 Delta 근처로 돌아온다
     //  - 곱셈 깊이 2 까지 쓰므로 Delta 크기의 소수가 2 개
     EncryptionParameters parms(scheme_type::ckks);
     size_t n = 8192;
@@ -105,19 +105,22 @@ int main()
     // 그냥 더해 보기 -> 레벨이 달라서 실패
     try_add("x^2 + x", evaluator, ct_x2, ct_x);
 
-    // ct_x 를 ct_x2 와 같은 레벨로 내리기
-    Ciphertext ct_x_low;
-    // TODO: ct_x 를 ct_x2 의 레벨 (ct_x2.parms_id()) 로 mod switch -> ct_x_low  (mod_switch_to)
+    // ct_x 를 mod switch 로 ct_x2 와 같은 레벨로 내려서 더해 보기 -> 이번에는 scale 이 달라서 실패
+    Ciphertext ct_x_ms;
+    // TODO: ct_x 를 ct_x2 의 레벨 (ct_x2.parms_id()) 로 mod switch -> ct_x_ms  (mod_switch_to)
 
-
-    // 다시 더해 보기 -> 이번에는 scale 이 달라서 실패
-    try_add("x^2 + x (same level)", evaluator, ct_x2, ct_x_low);
+    try_add("x^2 + x (mod switch)", evaluator, ct_x2, ct_x_ms);
     cout << fixed << setprecision(0) << "  scale of x^2 = " << ct_x2.scale() << "\n"
-         << "  scale of x   = " << ct_x_low.scale() << "\n";
+         << "  scale of x   = " << ct_x_ms.scale() << "\n";
     cout.unsetf(ios::fixed);
 
-    // ct_x2 의 scale 을 Delta 로 맞추기 (거의 같으므로 같다고 적어 둔다)
-    // TODO: ct_x2.scale() 에 scale 을 대입
+    // 레벨과 scale 을 함께 맞추기: ct_x 에 1.0 을 곱하고 rescale
+    //   x^2 과 똑같이 "곱하고 rescale" 을 한 번 거치므로 scale 이 Delta^2 / q1 로 정확히 같아진다
+    Plaintext pt_one;
+    Ciphertext ct_x_low;
+    // TODO: 1.0 을 scale 로 인코딩 -> pt_one,  ct_x x pt_one -> ct_x_low (multiply_plain),  rescale
+
+    try_add("x^2 + x (1.0 * x)", evaluator, ct_x2, ct_x_low);
 
     // 이제 더하기
     Ciphertext ct_sum;
@@ -130,34 +133,36 @@ int main()
 
     // ---------------------------------------------------------------
     // 4. pi x^3 + 0.4 x + 1: 곱셈 깊이 2 (x^3 = x^2 * (pi x))
+    //    모든 항이 "곱하고 rescale" 을 두 번씩 거치게 하면 scale 이 정확히 같아진다
     // ---------------------------------------------------------------
-    // pi x: 상수 pi 를 인코딩해서 ct_x 에 곱하고 rescale
+    // pi x: 상수 pi 를 인코딩해서 ct_x 에 곱하고 rescale (level 1)
     Plaintext pt_pi;
     Ciphertext ct_pix;
     // TODO: PI 를 scale 로 인코딩 -> pt_pi,  ct_x x pt_pi -> ct_pix (multiply_plain),  rescale
 
     print_ct_ckks("pi x", ct_pix, context);
 
-    // pi x^3 = x^2 * (pi x): 곱셈 -> relinearize -> rescale
+    // pi x^3 = x^2 * (pi x): 곱셈 -> relinearize -> rescale (level 0)
     Ciphertext ct_pix3;
     // TODO: ct_x2 x ct_pix -> ct_pix3,  relinearize,  rescale
 
     print_ct_ckks("pi x^3", ct_pix3, context);
 
-    // 0.4 x: 상수 0.4 를 곱하고 rescale, 그리고 ct_pix3 와 같은 레벨로 내리기
+    // 0.4 x: level 1 에 있는 ct_x_low 에 0.4 를 곱하고 rescale (level 0)
+    //   평문은 곱할 암호문과 같은 레벨, 같은 scale 로 인코딩한다
     Plaintext pt_04;
     Ciphertext ct_04x;
-    // TODO: 0.4 를 scale 로 인코딩 -> pt_04,  ct_x x pt_04 -> ct_04x,  rescale
-    //       ct_04x 를 ct_pix3 의 레벨로 mod switch (mod_switch_to_inplace)
+    // TODO: 0.4 를 인코딩 -> pt_04:  encoder.encode(0.4, ct_x_low.parms_id(), ct_x_low.scale(), pt_04)
+    //       ct_x_low x pt_04 -> ct_04x (multiply_plain),  rescale
 
     print_ct_ckks("0.4 x", ct_04x, context);
 
-    // scale 을 Delta 로 맞추고 더하기. 상수 1 은 같은 레벨로 인코딩해서 add_plain
+    // 더하기. 상수 1 은 결과와 같은 레벨, 같은 scale 로 인코딩해서 add_plain
     Ciphertext ct_poly;
-    Plaintext pt_one;
-    // TODO: ct_pix3, ct_04x 의 scale 에 scale 을 대입,  ct_pix3 + ct_04x -> ct_poly
-    //       1.0 을 ct_poly 의 레벨로 인코딩 -> pt_one:  encoder.encode(1.0, ct_poly.parms_id(), scale, pt_one)
-    //       ct_poly 에 pt_one 더하기 (add_plain_inplace)
+    Plaintext pt_const;
+    // TODO: ct_pix3 + ct_04x -> ct_poly
+    //       1.0 을 인코딩 -> pt_const:  encoder.encode(1.0, ct_poly.parms_id(), ct_poly.scale(), pt_const)
+    //       ct_poly 에 pt_const 더하기 (add_plain_inplace)
 
     print_ct_ckks("pi x^3 + 0.4 x + 1", ct_poly, context);
     double p_poly = print_error("pi x^3 + 0.4 x + 1", ct_poly, poly, decryptor, encoder);
@@ -169,21 +174,19 @@ int main()
     //  - 정밀도 (비트) = -log2(최대 오차)
     //  - fresh: 에러의 표준편차는 n / 6 이고 (Delta 와 무관), 슬롯 n / 2 개 중 최댓값은 그 6배쯤 (+2.6 비트)
     //           오차 = 에러 / Delta 이므로 정밀도 = log2(Delta) - log2(n / 6) - 2.6
-    //  - x^2: (x + e)^2 = x^2 + 2 x e 이므로 에러가 최대 2배 (-1 비트)
-    //  - x^2 + x, 다항식: scale 을 Delta 로 고쳐 적은 만큼 값이 틀어진다
-    //      d1, d0 = Delta / (rescale 에서 버린 RNS 소수) - 1  (소수가 Delta 와 어긋난 비율. d1 이 먼저 버린 소수)
-    //      x^2 과 0.4 x 는 (1 + d1) 배, pi x^3 은 (1 + d1)^2 (1 + d0) 배가 된다
+    //  - 계산을 거치면 에러가 미분값 배로 커진다: f(x + e) = f(x) + f'(x) e
+    //      x^2                : 2 x              -> 최대 2 배
+    //      x^2 + x            : 2 x + 1          -> 최대 3 배
+    //      pi x^3 + 0.4 x + 1 : 3 pi x^2 + 0.4   -> 최대 9.8 배
     double q1 = parms.coeff_modulus()[2].value();
-    double q0 = parms.coeff_modulus()[1].value();
-    double d1 = abs(scale / q1 - 1);
-    double d0 = abs(scale / q0 - 1);
+    double fresh = scale_bits - log2(n / 6.0) - 2.6;
     cout << "\n";
     print_compare("scale: x * x", 2.0 * scale_bits, s_mul);
     print_compare("scale: rescale", 2.0 * scale_bits - log2(q1), s_rescale);
-    print_compare("prec: fresh", scale_bits - log2(n / 6.0) - 2.6, p_fresh);
-    print_compare("prec: x^2", p_fresh - 1, p_x2);
-    print_compare("prec: x^2 + x", -log2(d1), p_sum);
-    print_compare("prec: poly", -log2(PI * (2 * d1 + d0) + 0.4 * d1), p_poly);
+    print_compare("prec: fresh", fresh, p_fresh);
+    print_compare("prec: x^2", fresh - log2(2.0), p_x2);
+    print_compare("prec: x^2 + x", fresh - log2(3.0), p_sum);
+    print_compare("prec: poly", fresh - log2(3 * PI + 0.4), p_poly);
 
     return 0;
 }

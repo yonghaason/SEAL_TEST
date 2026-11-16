@@ -18,18 +18,21 @@ double sigmoid3_plain(double z)
 
 // 암호문 ct_z 의 슬롯마다 0.5 + 0.197 z - 0.004 z^3 을 계산해서 돌려준다.
 // 곱셈 깊이 2: z^3 항은 (z^2) * (-0.004 z) 로 만든다. 결과는 ct_z 보다 2 레벨 아래.
-// scale 은 Delta. 상수는 ct_z 와 같은 레벨 (ct_z.parms_id()) 로 인코딩해야 곱할 수 있다.
+// 평문 상수는 곱하거나 더할 암호문과 같은 레벨, 같은 scale 로 인코딩한다:
+//   encoder.encode(값, ct.parms_id(), ct.scale(), pt)
+// 두 항 모두 "곱하고 rescale" 을 두 번씩 거치게 하면 scale 이 정확히 같아져서 그대로 더할 수 있다 (실험 5).
 Ciphertext sigmoid3(const Ciphertext &ct_z, Evaluator &evaluator, CKKSEncoder &encoder,
-                    const RelinKeys &relin_keys, double scale)
+                    const RelinKeys &relin_keys)
 {
     Ciphertext ct_out;
     // TODO: 아래 순서로 계산해서 ct_out 에 넣기
     //   1) z^2            : ct_z x ct_z -> relinearize -> rescale
-    //   2) -0.004 z       : -0.004 를 인코딩 (encoder.encode(-0.004, ct_z.parms_id(), scale, pt)) 해서 곱하고 rescale
+    //   2) -0.004 z       : -0.004 를 인코딩 (encoder.encode(-0.004, ct_z.parms_id(), ct_z.scale(), pt)) 해서
+    //                       ct_z 에 곱하고 rescale
     //   3) -0.004 z^3     : 1) x 2) -> relinearize -> rescale
-    //   4) 0.197 z        : 0.197 을 인코딩해서 곱하고 rescale, 그리고 3) 의 레벨로 mod switch
-    //   5) 3), 4) 의 scale 에 scale 을 대입하고 더하기 -> ct_out
-    //   6) 0.5 를 ct_out 의 레벨로 인코딩해서 더하기 (add_plain_inplace)
+    //   4) z 를 한 레벨 내리기 : 1.0 을 인코딩해서 ct_z 에 곱하고 rescale -> ct_z_low
+    //   5) 0.197 z        : 0.197 을 ct_z_low 의 레벨, scale 로 인코딩해서 ct_z_low 에 곱하고 rescale
+    //   6) 3) + 5) -> ct_out,  0.5 를 ct_out 의 레벨, scale 로 인코딩해서 더하기 (add_plain_inplace)
 
     return ct_out;
 }
@@ -85,7 +88,7 @@ int main()
         encryptor.encrypt(pt_z, ct_z);
 
         // 암호문 상태에서 시그모이드 근사 계산
-        Ciphertext ct_out = sigmoid3(ct_z, evaluator, encoder, relin_keys, scale);
+        Ciphertext ct_out = sigmoid3(ct_z, evaluator, encoder, relin_keys);
 
         cout << "z in [" << -range << ", " << range << "]\n";
         print_ct_ckks("input z", ct_z, context);

@@ -18,9 +18,11 @@ double sigmoid3_plain(double z)
 
 // 암호문 ct_z 의 슬롯마다 0.5 + 0.197 z - 0.004 z^3 을 계산해서 돌려준다.
 // 곱셈 깊이 2: z^3 항은 (z^2) * (-0.004 z) 로 만든다. 결과는 ct_z 보다 2 레벨 아래.
-// scale 은 Delta. 상수는 ct_z 와 같은 레벨 (ct_z.parms_id()) 로 인코딩해야 곱할 수 있다.
+// 평문 상수는 곱하거나 더할 암호문과 같은 레벨, 같은 scale 로 인코딩한다:
+//   encoder.encode(값, ct.parms_id(), ct.scale(), pt)
+// 두 항 모두 "곱하고 rescale" 을 두 번씩 거치게 하면 scale 이 정확히 같아져서 그대로 더할 수 있다 (실험 5).
 Ciphertext sigmoid3(const Ciphertext &ct_z, Evaluator &evaluator, CKKSEncoder &encoder,
-                    const RelinKeys &relin_keys, double scale)
+                    const RelinKeys &relin_keys)
 {
     // z^2: 곱셈 -> relinearize -> rescale
     Ciphertext ct_z2;
@@ -30,7 +32,7 @@ Ciphertext sigmoid3(const Ciphertext &ct_z, Evaluator &evaluator, CKKSEncoder &e
 
     // -0.004 z: 상수를 곱하고 rescale
     Plaintext pt_c3;
-    encoder.encode(-0.004, ct_z.parms_id(), scale, pt_c3);
+    encoder.encode(-0.004, ct_z.parms_id(), ct_z.scale(), pt_c3);
     Ciphertext ct_c3z;
     evaluator.multiply_plain(ct_z, pt_c3, ct_c3z);
     evaluator.rescale_to_next_inplace(ct_c3z);
@@ -41,21 +43,25 @@ Ciphertext sigmoid3(const Ciphertext &ct_z, Evaluator &evaluator, CKKSEncoder &e
     evaluator.relinearize_inplace(ct_c3z3, relin_keys);
     evaluator.rescale_to_next_inplace(ct_c3z3);
 
-    // 0.197 z: 상수를 곱하고 rescale, 그리고 ct_c3z3 와 같은 레벨로 내리기
-    Plaintext pt_c1;
-    encoder.encode(0.197, ct_z.parms_id(), scale, pt_c1);
-    Ciphertext ct_c1z;
-    evaluator.multiply_plain(ct_z, pt_c1, ct_c1z);
-    evaluator.rescale_to_next_inplace(ct_c1z);
-    evaluator.mod_switch_to_inplace(ct_c1z, ct_c3z3.parms_id());
+    // z 를 한 레벨 내리기: 1.0 을 곱하고 rescale
+    Plaintext pt_one;
+    encoder.encode(1.0, ct_z.parms_id(), ct_z.scale(), pt_one);
+    Ciphertext ct_z_low;
+    evaluator.multiply_plain(ct_z, pt_one, ct_z_low);
+    evaluator.rescale_to_next_inplace(ct_z_low);
 
-    // scale 을 Delta 로 맞추고 더하기. 상수 0.5 는 같은 레벨로 인코딩해서 add_plain
-    ct_c3z3.scale() = scale;
-    ct_c1z.scale() = scale;
+    // 0.197 z: 내려온 ct_z_low 에 상수를 곱하고 rescale -> ct_c3z3 와 레벨, scale 이 같다
+    Plaintext pt_c1;
+    encoder.encode(0.197, ct_z_low.parms_id(), ct_z_low.scale(), pt_c1);
+    Ciphertext ct_c1z;
+    evaluator.multiply_plain(ct_z_low, pt_c1, ct_c1z);
+    evaluator.rescale_to_next_inplace(ct_c1z);
+
+    // 더하기. 상수 0.5 는 결과와 같은 레벨, 같은 scale 로 인코딩해서 add_plain
     Ciphertext ct_out;
     evaluator.add(ct_c3z3, ct_c1z, ct_out);
     Plaintext pt_c0;
-    encoder.encode(0.5, ct_out.parms_id(), scale, pt_c0);
+    encoder.encode(0.5, ct_out.parms_id(), ct_out.scale(), pt_c0);
     evaluator.add_plain_inplace(ct_out, pt_c0);
 
     return ct_out;
@@ -112,7 +118,7 @@ int main()
         encryptor.encrypt(pt_z, ct_z);
 
         // 암호문 상태에서 시그모이드 근사 계산
-        Ciphertext ct_out = sigmoid3(ct_z, evaluator, encoder, relin_keys, scale);
+        Ciphertext ct_out = sigmoid3(ct_z, evaluator, encoder, relin_keys);
 
         cout << "z in [" << -range << ", " << range << "]\n";
         print_ct_ckks("input z", ct_z, context);

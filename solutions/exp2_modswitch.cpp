@@ -18,7 +18,7 @@ EncryptionParameters make_parms(scheme_type scheme)
     return parms;
 }
 
-// 현재 레벨에서 "제곱 + relinearize" 1 회에 걸리는 평균 시간 (ms). ct 는 바뀌지 않는다.
+// 현재 레벨에서 "제곱 + relinearize" 1 회에 걸리는 평균 시간 (ms). 
 double time_mult(Evaluator &evaluator, const Ciphertext &ct, const RelinKeys &relin_keys, int reps = 20)
 {
     Timer tm;
@@ -31,7 +31,7 @@ double time_mult(Evaluator &evaluator, const Ciphertext &ct, const RelinKeys &re
     return tm.ms() / reps;
 }
 
-// 같은 암호문을 4번 제곱한다. use_modswitch = true 이면 곱셈마다 mod switch 를 한다.
+// 같은 암호문을 4번 제곱. use_modswitch = true 이면 곱셈마다 mod switch.
 void run(scheme_type scheme, bool use_modswitch)
 {
     EncryptionParameters parms = make_parms(scheme);

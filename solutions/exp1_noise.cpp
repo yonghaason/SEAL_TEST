@@ -94,7 +94,7 @@ int main()
     print_check("(a * b)^2", ct_sq, ab2, decryptor, encoder);
 
     // 이론과 비교: 예산 감소량 = 에러 비트 증가량
-    //  - log_q: 암호문 모듈러스 q 의 비트 수 (q 를 이루는 RNS 소수들의 비트 수 합, special prime 제외)
+    //  - log_q: 암호문 모듈러스 q 의 비트 수 (special prime 제외)
     //  - e0: fresh 암호문의 에러 비트 수
     //  - e1: 첫 곱셈 (relinearize) 후의 에러 비트 수
 

@@ -5,7 +5,7 @@
 
 사용법:
     python3 tools/image_to_vector.py my_digit.png -o my.txt
-    ./build/exp7_logreg my.txt
+    ./build/exp6_logreg my.txt
 
 필요한 패키지: numpy, pillow  (--show 를 쓸 때만 matplotlib)
 """

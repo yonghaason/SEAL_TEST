@@ -43,11 +43,10 @@ cmake -S . -B build
   - `exp3_lazy.cpp` : lazy relinearization
   - `exp4_rotation.cpp` : rotation 과 회전키 전략
   - `exp5_ckks.cpp` : CKKS 기본 (scale, rescale, 레벨 맞추기)
-  - `exp6_sigmoid.cpp` : 시그모이드 다항식 근사
-  - `exp7_logreg.cpp` : MNIST 숫자 인식 (10-클래스 로지스틱 회귀) 추론. `mnist_data.h` 는 모델과 테스트 이미지
+  - `exp6_logreg.cpp` : MNIST 숫자 인식 (10-클래스 로지스틱 회귀) 추론. `mnist_data.h` 는 모델과 테스트 이미지
 - `solutions/` : 위 실험들의 정답 (학생 파일과 같은 주석 구조)
 - `tools/make_mnist_data.py` : `exec/mnist_data.h` 를 만든 스크립트 (실습에는 필요 없음)
-- `tools/image_to_vector.py` : 손으로 쓴 숫자 이미지를 실험 7 입력 파일로 바꾸는 스크립트 (numpy, pillow 필요)
+- `tools/image_to_vector.py` : 손으로 쓴 숫자 이미지를 실험 6 입력 파일로 바꾸는 스크립트 (numpy, pillow 필요)
 - `docs/plan.md` : 실습 전체 계획
 
 ## 빌드와 실행
@@ -75,13 +74,13 @@ cmake -S . -B build-sol -DSOL=ON
 cmake --build build-sol
 ```
 
-## 실험 7 에 직접 쓴 숫자 넣기
+## 실험 6 에 직접 쓴 숫자 넣기
 
 흰 바탕에 검은 글씨로 숫자 하나를 쓴 이미지 파일을 준비합니다.
 
 ```
 python3 tools/image_to_vector.py my_digit.png -o my.txt
-./build/exp7_logreg my.txt
+./build/exp6_logreg my.txt
 ```
 
-인자 없이 실행하면 내장 이미지 0 번을 쓰고, `./build/exp7_logreg 7` 처럼 0 ~ 10 번을 고를 수 있습니다.
+인자 없이 실행하면 내장 이미지 0 번을 쓰고, `./build/exp6_logreg 7` 처럼 0 ~ 10 번을 고를 수 있습니다.

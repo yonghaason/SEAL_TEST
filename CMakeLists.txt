@@ -24,8 +24,7 @@ set(EXECUTABLES
     exp3_lazy
     exp4_rotation
     exp5_ckks
-    exp6_sigmoid
-    exp7_logreg
+    exp6_logreg
 )
 foreach(name ${EXECUTABLES})
     set(src exec/${name}.cpp)

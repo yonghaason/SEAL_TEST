@@ -1,7 +1,7 @@
-//   빌드: cmake --build build --target exp7_logreg
-//   실행: ./build/exp7_logreg            (내장 이미지 0 번)
-//         ./build/exp7_logreg 7          (내장 이미지 0 ~ 10 번 중 하나)
-//         ./build/exp7_logreg my.txt     (tools/image_to_vector.py 로 만든 784 개 값 파일)
+//   빌드: cmake --build build --target exp6_logreg
+//   실행: ./build/exp6_logreg            (내장 이미지 0 번)
+//         ./build/exp6_logreg 7          (내장 이미지 0 ~ 10 번 중 하나)
+//         ./build/exp6_logreg my.txt     (tools/image_to_vector.py 로 만든 784 개 값 파일)
 #include <cmath>
 #include <fstream>
 #include "common.h"

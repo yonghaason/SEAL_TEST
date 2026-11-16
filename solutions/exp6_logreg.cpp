@@ -111,11 +111,11 @@ int main(int argc, char **argv)
     vector<double> x = load_image(argc, argv, image_name);
 
     // 곱셈 깊이 1 (가중치 곱 한 번) -> Delta 크기 소수 1 개
-    // n 은 안전성이 아니라 슬롯 수 때문에 크게 잡는다: 슬롯 n / 2 = 16384 개 = 1024 칸 블록 16 개
+    // 실험 5 와 같은 n = 8192: 슬롯 n / 2 = 4096 개 = 1024 칸 블록 4 개
     double scale = pow(2.0, 40);
 
     EncryptionParameters parms(scheme_type::ckks);
-    size_t n = 32768;
+    size_t n = 8192;
     parms.set_poly_modulus_degree(n);
     parms.set_coeff_modulus(CoeffModulus::Create(n, { 60, 40, 60 }));
 
@@ -141,6 +141,8 @@ int main(int argc, char **argv)
     Evaluator evaluator(context);
     CKKSEncoder encoder(context);
     size_t slots = encoder.slot_count();
+    const int BLOCKS = static_cast<int>(slots / BLOCK);              // 암호문 하나에 들어가는 블록 수 (4)
+    const int GROUPS = (MNIST_CLASSES + BLOCKS - 1) / BLOCKS;        // (b) 에서 행을 BLOCKS 개씩 묶은 묶음 수 (3)
 
     // 비교용 평문 계산: 점수 z = W x + b (클래스마다 내적 하나)
     vector<double> z_plain(MNIST_CLASSES);
@@ -158,15 +160,15 @@ int main(int argc, char **argv)
     wait_enter("다음: 클라이언트가 이미지를 암호화");
 
     // ---------------------------------------------------------------
-    // 1. 클라이언트: 이미지를 블록 10 개에 똑같이 복사해서 암호문 하나로 암호화
-    //    x_slots = [ x (784) 0 ... 0 | x (784) 0 ... 0 | ... (10 번) ... | 0 ... ]
+    // 1. 클라이언트: 이미지를 블록 4 개에 똑같이 복사해서 암호문 하나로 암호화
+    //    x_slots = [ x (784) 0 ... 0 | x (784) 0 ... 0 | x (784) 0 ... 0 | x (784) 0 ... 0 ]
     // ---------------------------------------------------------------
     vector<double> x_slots(slots, 0.0);
-    for (int k = 0; k < MNIST_CLASSES; k++)
+    for (int t = 0; t < BLOCKS; t++)
     {
         for (int j = 0; j < MNIST_DIM; j++)
         {
-            x_slots[BLOCK * k + j] = x[j];
+            x_slots[BLOCK * t + j] = x[j];
         }
     }
     Plaintext pt_x;
@@ -196,27 +198,32 @@ int main(int argc, char **argv)
     double ms_a = tm_a.ms();
     print_ct_ckks("(a) row 0", ct_rows[0], context);
 
-    wait_enter("다음: 서버가 (b) 블록에 나눠 담아 한 번에 계산");
+    wait_enter("다음: 서버가 (b) 행을 4 개씩 블록에 나눠 담아 계산");
 
     // ---------------------------------------------------------------
-    // 3. 서버 (b): W 의 행 10 개를 블록 10 개에 나눠 담아 내적 한 번 -> 암호문 1 개
-    //    w_slots = [ W[0] (784) 0 ... 0 | W[1] (784) 0 ... 0 | ... | W[9] (784) 0 ... 0 | 0 ... ]
-    //    b_slots: 슬롯 1024 k 에 b[k],  결과는 슬롯 1024 k
+    // 3. 서버 (b): 행을 4 개씩 묶어 블록 4 개에 나눠 담는다. 묶음마다 내적 한 번 -> 암호문 3 개
+    //    묶음 c 의 w_slots = [ W[4c] (784) 0 ... 0 | W[4c+1] ... | W[4c+2] ... | W[4c+3] ... ]  (마지막 묶음은 W[8], W[9] 만)
+    //    b_slots: 슬롯 1024 t 에 b[4c + t],  결과는 묶음 c 의 슬롯 1024 t 에 z[4c + t]
     // ---------------------------------------------------------------
     Timer tm_b;
-    vector<double> w_slots(slots, 0.0), b_slots(slots, 0.0);
-    for (int k = 0; k < MNIST_CLASSES; k++)
+    vector<Ciphertext> ct_packed(GROUPS);
+    for (int c = 0; c < GROUPS; c++)
     {
-        for (int j = 0; j < MNIST_DIM; j++)
+        vector<double> w_slots(slots, 0.0), b_slots(slots, 0.0);
+        for (int t = 0; t < BLOCKS && BLOCKS * c + t < MNIST_CLASSES; t++)
         {
-            w_slots[BLOCK * k + j] = mnist_w[k][j];
+            int k = BLOCKS * c + t;
+            for (int j = 0; j < MNIST_DIM; j++)
+            {
+                w_slots[BLOCK * t + j] = mnist_w[k][j];
+            }
+            b_slots[BLOCK * t] = mnist_b[k];
         }
-        b_slots[BLOCK * k] = mnist_b[k];
+        require_filled("(b) w_slots", w_slots);
+        ct_packed[c] = block_inner_product(ct_x, w_slots, b_slots, evaluator, encoder, galois_keys, scale);
     }
-    require_filled("(b) w_slots", w_slots);
-    Ciphertext ct_packed = block_inner_product(ct_x, w_slots, b_slots, evaluator, encoder, galois_keys, scale);
     double ms_b = tm_b.ms();
-    print_ct_ckks("(b) packed", ct_packed, context);
+    print_ct_ckks("(b) group 0", ct_packed[0], context);
 
     wait_enter("다음: 클라이언트가 복호화");
 
@@ -224,11 +231,15 @@ int main(int argc, char **argv)
     // 4. 클라이언트: 복호화해서 점수가 가장 큰 클래스를 고른다
     // ---------------------------------------------------------------
     vector<double> z_a(MNIST_CLASSES), z_b(MNIST_CLASSES);
-    vector<double> packed = decrypt_slots("(b) packed", ct_packed, decryptor, encoder);
+    vector<vector<double>> packed(GROUPS);
+    for (int c = 0; c < GROUPS; c++)
+    {
+        packed[c] = decrypt_slots("(b) group " + to_string(c), ct_packed[c], decryptor, encoder);
+    }
     for (int k = 0; k < MNIST_CLASSES; k++)
     {
         z_a[k] = decrypt_slots("(a) row " + to_string(k), ct_rows[k], decryptor, encoder)[0];
-        z_b[k] = packed[BLOCK * k];
+        z_b[k] = packed[k / BLOCKS][BLOCK * (k % BLOCKS)];   // 클래스 k 는 묶음 k / 4 의 블록 k % 4
     }
 
     cout << "\n" << setw(6) << "class" << setw(12) << "plain" << setw(12) << "(a) rows" << setw(12) << "(b) packed"
@@ -247,7 +258,7 @@ int main(int argc, char **argv)
 
     // 이론값: 회전 (key switching) 횟수 = 내적 횟수 x 10.  시간은 회전 횟수에 거의 비례한다 (실험 4)
     //  - (a) 내적 10 번 -> 회전 100 번, 서버가 돌려주는 암호문 10 개
-    //  - (b) 내적  1 번 -> 회전  10 번, 서버가 돌려주는 암호문  1 개
+    //  - (b) 내적  3 번 -> 회전  30 번, 서버가 돌려주는 암호문  3 개 (행 4 개씩 묶음 3 개)
     cout << "\n" << left << setw(16) << "strategy" << right << setw(14) << "ciphertexts" << setw(12) << "rotations"
          << setw(14) << "time" << setw(16) << "CKKS error" << "\n";
     auto row = [](const string &name, int cts, int rotations, double ms, double err) {
@@ -256,7 +267,7 @@ int main(int argc, char **argv)
         cout.unsetf(ios::floatfield);
     };
     row("(a) row by row", MNIST_CLASSES, MNIST_CLASSES * 10, ms_a, e_a);
-    row("(b) packed", 1, 10, ms_b, e_b);
+    row("(b) packed", GROUPS, GROUPS * 10, ms_b, e_b);
 
     return 0;
 }

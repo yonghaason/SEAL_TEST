@@ -210,10 +210,15 @@ int main(int argc, char **argv)
     for (int c = 0; c < GROUPS; c++)
     {
         vector<double> w_slots(slots, 0.0), b_slots(slots, 0.0);
-        // TODO: 이 묶음의 블록 t (t = 0 ~ BLOCKS - 1) 에 클래스 k = BLOCKS * c + t 를 넣기 (k 가 10 이상이면 건너뛰기)
-        //         w_slots 의 블록 t (슬롯 BLOCK * t + j, j = 0 ~ 783) 에 mnist_w[k][j]
-        //         b_slots 의 슬롯 BLOCK * t 에 mnist_b[k]
-
+        for (int t = 0; t < BLOCKS && BLOCKS * c + t < MNIST_CLASSES; t++)
+        {
+            int k = BLOCKS * c + t;
+            for (int j = 0; j < MNIST_DIM; j++)
+            {
+                w_slots[BLOCK * t + j] = mnist_w[k][j];
+            }
+            b_slots[BLOCK * t] = mnist_b[k];
+        }
         require_filled("(b) w_slots", w_slots);
         ct_packed[c] = block_inner_product(ct_x, w_slots, b_slots, evaluator, encoder, galois_keys, scale);
     }

@@ -44,6 +44,11 @@ cmake -S . -B build
   - `exp4_rotation.cpp` : rotation 과 회전키 전략
   - `exp5_ckks.cpp` : CKKS 기본 (scale, rescale, 레벨 맞추기)
   - `exp6_logreg.cpp` : MNIST 숫자 인식 (10-클래스 로지스틱 회귀) 추론. `mnist_data.h` 는 모델과 테스트 이미지
+  - `exp7_psi_basic.cpp` : 가장 단순한 PSI, r · ∏(y − x)
+  - `exp8_psi_powers.cpp` : 거듭제곱을 더 보내기 (windowing)
+  - `exp9_psi_bucket.cpp` : 해싱 + 파티션으로 큰 집합과 작은 집합의 PSI
+  - `psi_hashing.cpp` : 해싱 시연 (채울 곳 없음)
+  - `psi_common.h` : PSI 실험 공용 함수 (해싱, 다항식 계수)
 - `solutions/` : 위 실험들의 정답 (학생 파일과 같은 주석 구조)
 - `tools/make_mnist_data.py` : `exec/mnist_data.h` 를 만든 스크립트 (실습에는 필요 없음)
 - `tools/image_to_vector.py` : 손으로 쓴 숫자 이미지를 실험 6 입력 파일로 바꾸는 스크립트 (numpy, pillow 필요, 교수 시연용)

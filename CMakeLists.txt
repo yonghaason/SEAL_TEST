@@ -25,6 +25,10 @@ set(EXECUTABLES
     exp4_rotation
     exp5_ckks
     exp6_logreg
+    exp7_psi_basic
+    exp8_psi_powers
+    exp9_psi_bucket
+    psi_hashing
 )
 foreach(name ${EXECUTABLES})
     set(src exec/${name}.cpp)

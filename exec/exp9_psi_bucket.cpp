@@ -10,7 +10,8 @@
 //      조각마다 응답 암호문이 하나씩 생긴다.
 //   3. 거듭제곱: 받는 쪽이 SEND 의 거듭제곱을 보내고, 보내는 쪽이 나머지 y^1 ~ y^D 를 만든다 (실험 8).
 //
-// 할 일: server_respond 를 채운 뒤, 맨 아래 ALPHA 와 SEND 를 바꿔 가며 실행해서 표를 채운다.
+// 할 일: partition 과 receiver_check 를 채운 뒤, 맨 위 ALPHA 와 SEND 를 바꿔 가며 실행해서 표를 채운다.
+//   (보내는 쪽의 동형 계산 server_respond 는 실험 7, 8 과 같아서 채워서 준다)
 //   - 결과가 맞아야 한다 (found = 100, wrong = 0).
 //   - 그중 통신량 (upload + download) 과 서버 시간이 작은 설정을 찾는다.
 #include <cmath>
@@ -25,7 +26,29 @@ int ALPHA = 1;            // 파티션 수 (bucket 을 몇 조각으로 나눌�
 vector<int> SEND = { 1 }; // 받는 쪽이 보낼 거듭제곱의 지수 (1 은 꼭 넣는다)
 // ===============================
 
-// 보내는 쪽의 응답.
+// 파티션: bucket j 를 ALPHA 조각으로 나눌 때 조각 p 에 들어갈 원소 D 개.
+//   조각 p 는 bucket 의 p * D 번째 원소부터 D 개. bucket 이 거기까지 차 있지 않으면 남는 자리는 PAD_ITEM.
+//   (조각마다 근이 정확히 D 개여야 모든 슬롯의 다항식 차수가 D 로 같아진다)
+vector<uint64_t> partition(const vector<uint64_t> &bucket_j, int p, int D)
+{
+    vector<uint64_t> roots(D, PAD_ITEM);
+    // TODO: k = 0 ~ D - 1 에 대해, bucket_j 에 (p * D + k) 번째 원소가 있으면 roots[k] 에 넣기
+
+    return roots;
+}
+
+// 받는 쪽 판정: values[p][j] = 응답 p 를 복호화했을 때 슬롯 j 의 값 (p = 0 ~ ALPHA - 1).
+//   슬롯 j 의 y 가 bucket j 의 어느 조각에 있으면 그 조각의 응답이 0 이다.
+//   -> 슬롯 j 는 ALPHA 개 응답 중 하나라도 0 이면 교집합.
+vector<bool> receiver_check(const vector<vector<uint64_t>> &values, size_t N)
+{
+    vector<bool> hit(N, false);
+    // TODO: 응답마다 (values[p]), 값이 0 인 슬롯 j 의 hit[j] 를 true 로
+
+    return hit;
+}
+
+// 보내는 쪽의 응답 (채워서 준다: 실험 8 의 거듭제곱 + 실험 7 의 다항식 계산 + 응답 전 mod switch).
 //   powers[k]: 받은 거듭제곱 Enc(y^k) (나머지는 빈 암호문, 크기 D + 1)
 //   coeffs[p][k]: 파티션 p 의 다항식 계수 c_k 를 슬롯마다 넣어 인코딩한 평문 (슬롯 j 에는 bucket j 의 계수)
 //   pt_r[p]: 파티션 p 의 마스크 r (슬롯마다 다른 랜덤)
@@ -39,8 +62,13 @@ vector<Ciphertext> server_respond(vector<Ciphertext> &powers, const PowerPlan &p
     // (1) y^1 ~ y^D 만들기: 실험 8 의 compute_powers 와 같다
     for (int k = 1; k <= D; k++)
     {
-        // TODO: 실험 8 의 compute_powers 의 반복문 안쪽과 같다 (plan.split[k] 로 y^a x y^b -> y^k)
-
+        auto [a, b] = plan.split[k];
+        if (a == 0)
+        {
+            continue;
+        }
+        evaluator.multiply(powers[a], powers[b], powers[k]);
+        evaluator.relinearize_inplace(powers[k], relin_keys);
     }
 
     vector<Ciphertext> responses(coeffs.size());
@@ -49,13 +77,24 @@ vector<Ciphertext> server_respond(vector<Ciphertext> &powers, const PowerPlan &p
         // (2) r * (c_0 + c_1 y + ... + c_D y^D): 실험 7 의 evaluate 와 같다.
         //     다른 점: 계수가 이미 평문으로 인코딩되어 있다 (coeffs[p][k]). 슬롯마다 다른 다항식.
         Ciphertext result;
-        // TODO: k = 1 ~ D 에 대해 powers[k] x coeffs[p][k] 를 result 에 더하기 (k == 1 이면 대입)
-        //       result 에 coeffs[p][0] 더하기,  result x pt_r[p]
-
+        for (int k = 1; k <= D; k++)
+        {
+            Ciphertext term;
+            evaluator.multiply_plain(powers[k], coeffs[p][k], term);
+            if (k == 1)
+            {
+                result = term;
+            }
+            else
+            {
+                evaluator.add_inplace(result, term);
+            }
+        }
+        evaluator.add_plain_inplace(result, coeffs[p][0]);
+        evaluator.multiply_plain_inplace(result, pt_r[p]);
 
         // (3) 돌려보내기 전에 마지막 레벨로 mod switch: 암호문 크기가 RNS 소수 4 개 -> 1 개 (실험 2)
-        // TODO: result 를 context.last_parms_id() 로 mod switch (mod_switch_to_inplace)
-
+        evaluator.mod_switch_to_inplace(result, context.last_parms_id());
 
         responses[p] = result;
     }
@@ -126,15 +165,7 @@ int main()
         vector<vector<uint64_t>> c(D + 1, vector<uint64_t>(N));
         for (size_t j = 0; j < N; j++)
         {
-            vector<uint64_t> roots(D, PAD_ITEM);
-            for (int k = 0; k < D; k++)
-            {
-                size_t idx = static_cast<size_t>(p) * D + k;
-                if (idx < bucket[j].size())
-                {
-                    roots[k] = bucket[j][idx];
-                }
-            }
+            vector<uint64_t> roots = partition(bucket[j], p, D);
             vector<uint64_t> cj = poly_from_roots(roots, t);
             for (int k = 0; k <= D; k++)
             {
@@ -144,6 +175,31 @@ int main()
         for (int k = 0; k <= D; k++)
         {
             encoder.encode(c[k], coeffs[p][k]);
+        }
+    }
+    // partition 확인: 조각들을 합치면 bucket 의 원소가 빠짐없이, 한 번씩 들어 있어야 한다
+    for (size_t j = 0; j < N; j++)
+    {
+        size_t cnt = 0;
+        for (int p = 0; p < ALPHA; p++)
+        {
+            vector<uint64_t> roots = partition(bucket[j], p, D);
+            if (static_cast<int>(roots.size()) != D)
+            {
+                cerr << "\n[오류] partition 이 근을 " << roots.size() << " 개 돌려줬습니다 (D = " << D << " 개여야 함).\n";
+                return 1;
+            }
+            for (int k = 0; k < D; k++)
+            {
+                size_t idx = static_cast<size_t>(p) * D + k;
+                cnt += (idx < bucket[j].size() && roots[k] == bucket[j][idx]);
+            }
+        }
+        if (cnt != bucket[j].size())
+        {
+            cerr << "\n[오류] bucket " << j << " 의 원소 " << bucket[j].size() << " 개 중 " << cnt
+                 << " 개만 조각에 들어갔습니다. partition 을 채웠는지 확인하세요.\n";
+            return 1;
         }
     }
     vector<Plaintext> pt_r(ALPHA);
@@ -213,20 +269,18 @@ int main()
     // ---------------------------------------------------------------
     // 5. 받는 쪽: 응답 ALPHA 개 중 하나라도 0 인 슬롯 = 교집합
     // ---------------------------------------------------------------
-    vector<bool> hit(N, false);
-    for (auto &ct : responses)
+    vector<vector<uint64_t>> values(responses.size());
+    for (size_t p = 0; p < responses.size(); p++)
     {
         Plaintext pt;
-        decryptor.decrypt(ct, pt);
-        vector<uint64_t> v;
-        encoder.decode(pt, v);
-        for (size_t j = 0; j < N; j++)
-        {
-            if (v[j] == 0)
-            {
-                hit[j] = true;
-            }
-        }
+        decryptor.decrypt(responses[p], pt);
+        encoder.decode(pt, values[p]);
+    }
+    vector<bool> hit = receiver_check(values, N);
+    if (hit.size() != N)
+    {
+        cerr << "\n[오류] receiver_check 가 슬롯 " << hit.size() << " 개를 돌려줬습니다 (" << N << " 개여야 함).\n";
+        return 1;
     }
     int found = 0, wrong = 0;
     for (size_t j = 0; j < N; j++)
@@ -253,6 +307,10 @@ int main()
     cout << "min noise budget of responses: " << min_budget << " bits  (실습용 확인: 실제 서버는 비밀키가 없다)\n";
     cout << "found " << found << " / 100,  wrong " << wrong << (found == 100 && wrong == 0 ? "  -> OK" : "  -> FAIL")
          << "\n";
+    if (count(hit.begin(), hit.end(), true) == 0 && min_budget > 0)
+    {
+        cout << "[안내] 예산이 남아 있는데 교집합으로 판정된 슬롯이 없습니다. receiver_check 를 채웠는지 확인하세요.\n";
+    }
 
     return 0;
 }

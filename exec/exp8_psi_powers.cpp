@@ -1,7 +1,7 @@
 //   빌드: cmake --build build --target exp8_psi_powers
 //   실행: ./build/exp8_psi_powers
 //
-// 거듭제곱을 더 보내기 (windowing).
+// 거듭제곱을 더 보내기.
 //   실험 7 에서는 받는 쪽이 Enc(y) 하나만 보내서, 보내는 쪽이 y^2 ~ y^B 를 모두 곱셈으로 만들었다 (깊이 log B).
 //   받는 쪽은 y 를 알고 있으니 y^2, y^4, ... 를 평문으로 계산해서 같이 암호화해 보낼 수 있다.
 //   -> 보내는 암호문 (통신) 은 늘고, 보내는 쪽의 곱셈 (계산, 깊이) 은 준다.
@@ -104,8 +104,8 @@ int main()
     encoder.encode(r, pt_r);
 
     // 받는 쪽이 보낼 거듭제곱 (지수 목록) 4 가지
-    vector<string> names = { "(a) y only", "(b) powers of 2", "(c) all powers", "(d) window 2-bit" };
-    vector<vector<int>> strategies(4);
+    vector<string> names = { "(a) y only", "(b) powers of 2", "(c) all powers" };
+    vector<vector<int>> strategies(3);
 
     // (a) y 하나만 보내기: { 1 }
     // TODO: strategies[0] 채우기
@@ -119,15 +119,13 @@ int main()
     // TODO: strategies[2] 채우기 (반복문으로)
 
 
-    // (d) CLR17 의 windowing (2 비트씩): { 1, 2, 3, 4, 8, 12 } = { i * 4^j : i = 1, 2, 3 }  (채워서 준다)
-    strategies[3] = { 1, 2, 3, 4, 8, 12 };
 
-    wait_enter("다음: 거듭제곱을 보내는 전략 4 가지 (B = 16)");
+    wait_enter("다음: 거듭제곱을 보내는 전략 3 가지 (B = 16)");
 
     cout << "\n" << left << setw(18) << "strategy" << right << setw(6) << "sent" << setw(10) << "upload" << setw(8)
          << "mults" << setw(7) << "depth" << setw(8) << "budget" << setw(8) << "result" << setw(12) << "server"
          << "\n";
-    for (int s = 0; s < 4; s++)
+    for (int s = 0; s < 3; s++)
     {
         const vector<int> &sent = strategies[s];
         if (sent.empty())

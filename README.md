@@ -45,7 +45,7 @@ cmake -S . -B build
   - `exp5_ckks.cpp` : CKKS 기본 (scale, rescale, 레벨 맞추기)
   - `exp6_logreg.cpp` : MNIST 숫자 인식 (10-클래스 로지스틱 회귀) 추론. `mnist_data.h` 는 모델과 테스트 이미지
   - `exp7_psi_basic.cpp` : 가장 단순한 PSI, r · ∏(y − x)
-  - `exp8_psi_powers.cpp` : 거듭제곱을 더 보내기 (windowing)
+  - `exp8_psi_powers.cpp` : 거듭제곱을 더 보내기
   - `exp9_psi_bucket.cpp` : 해싱 + 파티션으로 큰 집합과 작은 집합의 PSI
   - `psi_hashing.cpp` : 해싱 시연 (채울 곳 없음)
   - `psi_common.h` : PSI 실험 공용 함수 (해싱, 다항식 계수)

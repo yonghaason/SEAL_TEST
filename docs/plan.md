@@ -211,9 +211,9 @@ n = 8192 (실험 5 와 같음), q = {60, 40} + P 60, Δ = 2⁴⁰. 곱셈 깊이
 
 ## PSI: 동형암호 기반 PSI (실험 7\~9)
 
-BFV, n = 8192, q = BFVDefault (174비트), t = 20비트로 실험 0 과 같은 크기다. 원소는 Z_t 의 값 (2 이상 t 미만) 이라 같으면 정확히 0 이 나오고 거짓 일치가 없다. 0 은 받는 쪽의 빈 슬롯, 1 은 보내는 쪽 bucket 을 채우는 가짜 원소로 쓴다. 공용 함수는 `exec/psi_common.h` (해싱, 근에서 다항식 계수 만들기, 거듭제곱 계획) 에 있고 학생은 고치지 않는다. 아래 숫자는 2026-11-21 정답 코드 실측 (수업 서버가 아닌 다른 머신, 시간은 서버에서 다시 잴 것).
+BFV, n = 8192, q = BFVDefault (174비트), t = 20비트로 실험 0 과 같은 크기다. 1회차는 BGV 였지만 PSI 는 편의상 BFV 로 한다 (PSI 덱 8쪽): BGV 는 곱셈마다 에러 비트가 두 배라 같은 파라미터에서 mod switch 없이 B = 8 에서 실패하고 (BFV 는 16), mod switch 를 넣으면 y^k 마다 레벨이 달라 곱하기·더하기 전에 레벨을 맞춰야 하며 파라미터도 다시 골라야 한다 (같은 파라미터에 곱셈마다 mod switch 만 넣으면 B = 4 에서 실패). 원소는 Z_t 의 값 (2 이상 t 미만) 이라 같으면 정확히 0 이 나오고 거짓 일치가 없다. 0 은 받는 쪽의 빈 슬롯, 1 은 보내는 쪽 bucket 을 채우는 가짜 원소로 쓴다. 공용 함수는 `exec/psi_common.h` (해싱, 근에서 다항식 계수 만들기, 거듭제곱 계획) 에 있고 학생은 고치지 않는다. 아래 숫자는 2026-11-21 정답 코드 실측 (수업 서버가 아닌 다른 머신, 시간은 서버에서 다시 잴 것).
 
-강의 슬라이드는 PSI 덱 "동형암호 기반 PSI" 로 따로 둔다 (33장, 덱 파일은 저장소에 없다). 순서: PSI 문제 설정 → 실험 7 → 실험 8 (+ Paterson–Stockmeyer, postage-stamp bases) → bucketing (SIMD 슬롯 활용, 일반 해시 테이블의 padding 문제, cuckoo) → partitioning → 실험 9 → 확장 (OPRF, 긴 원소, labeled PSI, PSI with computation, SJ23, PSU) → 정리. 처음 계획한 내용: PSI 문제 설정, 해시 비교가 안 되는 이유, 응용 (유출 비밀번호 확인, 연락처 찾기), unbalanced 설정, 기본 아이디어 r·∏(y − x). 3회차 앞에 bucketing·cuckoo, 끝에 PSI 변형들 (CLR17, CHLR18, CMdG+21, SJ23, TCLZ23) 을 "뼈대는 같고 받는 쪽이 알게 되는 것만 다르다" 는 표 한 장으로.
+강의 슬라이드는 PSI 덱 "동형암호 기반 PSI" 로 따로 둔다 (34장, 덱 파일은 저장소에 없다). 순서: PSI 문제 설정 → 실험 7 → 실험 8 (+ Paterson–Stockmeyer, postage-stamp bases) → bucketing (SIMD 슬롯 활용, 일반 해시 테이블의 padding 문제, cuckoo) → partitioning → 실험 9 → 확장 (OPRF, 긴 원소, labeled PSI, PSI with computation, SJ23, PSU) → 정리. 처음 계획한 내용: PSI 문제 설정, 해시 비교가 안 되는 이유, 응용 (유출 비밀번호 확인, 연락처 찾기), unbalanced 설정, 기본 아이디어 r·∏(y − x). 3회차 앞에 bucketing·cuckoo, 끝에 PSI 변형들 (CLR17, CHLR18, CMdG+21, SJ23, TCLZ23) 을 "뼈대는 같고 받는 쪽이 알게 되는 것만 다르다" 는 표 한 장으로.
 
 ### 실험 7: 가장 단순한 PSI (`exp7_psi_basic`)
 
@@ -309,7 +309,7 @@ B = 16 (실험 7 에서 실패한 크기). 받는 쪽은 y 를 알고 있으니 
 - [ ] 실험 5, 6 을 수업 서버에서 실행해 시간 실측, `_template` 에 넣고 배포 (수업 서버에 pillow 가 있는지도 확인)
 - [x] 2\~3회차 시간 배분 (위 개요 표)
 - [x] PSI 실험 7\~9 와 해싱 시연 파일
-- [x] PSI 슬라이드 (따로 둔 PSI 덱 33장). 시간 숫자는 서버 실측으로 교체 필요. Paterson–Stockmeyer, postage-stamp 슬라이드의 숫자는 실습 코드 밖에서 따로 잰 값 (B = 16: PS 는 ct-ct 곱 6번 34 ms, 전부 만들면 12번 71 ms, S = {1, 3, 5, 7, 8} 은 깊이 1 예산 68).
+- [x] PSI 슬라이드 (따로 둔 PSI 덱 34장). 시간 숫자는 서버 실측으로 교체 필요. Paterson–Stockmeyer, postage-stamp 슬라이드의 숫자는 실습 코드 밖에서 따로 잰 값 (B = 16: PS 는 ct-ct 곱 6번 34 ms, 전부 만들면 12번 71 ms, S = {1, 3, 5, 7, 8} 은 깊이 1 예산 68).
 - [ ] PSU (TCLZ23) 슬라이드는 초록 수준만 확인함 (eprint 접속 불가). 역할과 원소 전달 단계는 논문으로 확인 필요
 - [ ] 실험 7\~9 를 수업 서버에서 실행해 시간 실측, `_template` 에 넣고 배포 (`psi_common.h` 포함)
 - [ ] 실험별 추가 과제 문구 파일에 넣을지 결정

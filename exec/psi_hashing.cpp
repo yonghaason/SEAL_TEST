@@ -3,7 +3,7 @@
 //
 // 강의 시연용 (암호 없음, 채울 곳 없음). 실험 9 에서 쓰는 해싱이 왜 그렇게 생겼는지 숫자로 본다.
 //   1. 보내는 쪽 simple hashing: 해시 함수 수에 따라 bucket 크기가 어떻게 되는가
-//   2. 받는 쪽: 해시 함수 하나로 넣으면 칸이 겹친다 -> cuckoo hashing
+//   2. 받는 쪽도 일반 해시 테이블로 넣으면: 칸마다 개수가 달라 가장 많은 칸에 맞춰 채워야 한다 -> cuckoo hashing
 //   3. cuckoo hashing: 해시 함수 수와 테이블을 얼마나 채우는지에 따른 실패율
 #include <random>
 #include "psi_common.h"
@@ -42,8 +42,9 @@ int main()
     wait_enter("다음: 받는 쪽은 왜 cuckoo hashing 인가");
 
     // ---------------------------------------------------------------
-    // 2. 받는 쪽: |Y| = 4000 을 해시 함수 하나로 넣으면 같은 칸에 두 개 이상 들어가는 원소가 생긴다.
-    //    슬롯 하나에는 원소 하나만 들어가므로, 이런 원소는 빠진다.
+    // 2. 받는 쪽도 일반 해시 테이블 (해시 함수 하나) 로 넣으면: 칸마다 원소 수가 다르다.
+    //    슬롯 하나에는 원소 하나만 들어가므로, 가장 많이 든 칸의 원소 수만큼 암호문이 필요하고
+    //    나머지 칸은 가짜 원소로 채워야 한다 (안 채우면 칸별 개수로 받는 쪽 원소의 분포가 드러난다).
     // ---------------------------------------------------------------
     {
         unordered_set<uint64_t> used;
@@ -53,13 +54,20 @@ int main()
         {
             count[hash_bucket(0, y, N)]++;
         }
-        int lost = 0;
+        int max_load = *max_element(count.begin(), count.end());
+        vector<int> hist(max_load + 1, 0);
         for (int c : count)
         {
-            lost += max(0, c - 1);
+            hist[c]++;
         }
-        cout << "\n2. receiver: |Y| = " << Y.size() << " with one hash function -> " << lost
-             << " items collide and do not fit\n";
+        cout << "\n2. receiver: |Y| = " << Y.size() << " into N = " << N << " slots with one hash function\n";
+        cout << setw(16) << "items in slot" << setw(10) << "slots" << "\n";
+        for (int c = 0; c <= max_load; c++)
+        {
+            cout << setw(16) << c << setw(10) << hist[c] << "\n";
+        }
+        cout << "-> " << max_load << " ciphertexts needed (padding " << static_cast<long>(max_load) * N - Y.size()
+             << " dummy items),  cuckoo hashing: 1 ciphertext\n";
     }
     wait_enter("다음: cuckoo hashing 실패율");
 

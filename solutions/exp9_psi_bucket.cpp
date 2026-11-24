@@ -26,6 +26,33 @@ int ALPHA = 5;            // 파티션 수 (bucket 을 몇 조각으로 나눌�
 vector<int> SEND = { 1, 2, 4, 8, 16 }; // 받는 쪽이 보낼 거듭제곱의 지수 (1 은 꼭 넣는다)
 // ===============================
 
+// y^k = y^a * y^b 로 만들 (a, b). 실험 8 의 split_power 와 같다.
+pair<int, int> split_power(int k, const vector<int> &sent)
+{
+    vector<int> parts; // k = parts 의 합 (큰 것부터)
+    int rest = k;
+    while (rest > 0)
+    {
+        int best = 0;
+        for (int s : sent)
+        {
+            if (s <= rest && s > best)
+            {
+                best = s;
+            }
+        }
+        parts.push_back(best);
+        rest -= best;
+    }
+    int a = 0, b = 0;
+    size_t half = (parts.size() + 1) / 2;
+    for (size_t i = 0; i < parts.size(); i++)
+    {
+        (i < half ? a : b) += parts[i];
+    }
+    return { a, b };
+}
+
 // 파티션: bucket j 를 ALPHA 조각으로 나눌 때 조각 p 에 들어갈 원소 D 개.
 //   조각 p 는 bucket 의 p * D 번째 원소부터 D 개. bucket 이 거기까지 차 있지 않으면 남는 자리는 PAD_ITEM.
 //   (조각마다 근이 정확히 D 개여야 모든 슬롯의 다항식 차수가 D 로 같아진다)
@@ -266,7 +293,7 @@ int main()
     // ---------------------------------------------------------------
     // 4. 보내는 쪽: 응답 계산
     // ---------------------------------------------------------------
-    PowerPlan plan = plan_powers(SEND, D);
+    PowerPlan plan = make_plan(SEND, D, split_power);
     Timer tm_server;
     vector<Ciphertext> responses = server_respond(powers, plan, coeffs, pt_r, evaluator, relin_keys, context);
     double ms_server = tm_server.ms();

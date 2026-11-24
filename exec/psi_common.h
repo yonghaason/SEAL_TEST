@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iostream>
 #include <random>
 #include <set>
 #include <sstream>
@@ -81,9 +82,11 @@ inline uint64_t powmod(uint64_t y, uint64_t e, uint64_t t)
 }
 
 // ---------------------------------------------------------------
-// 거듭제곱 계획: 받는 쪽이 보낸 거듭제곱 (sent) 만으로 y^1 ~ y^D 를 만드는 방법.
+// 거듭제곱 계획: 받는 쪽이 보낸 거듭제곱 (sent) 으로 y^1 ~ y^D 를 만드는 방법.
 //   split[k] = (a, b): y^k = y^a * y^b 로 만든다 (보낸 거듭제곱이면 (0, 0)).
-//   depth[k]: y^k 를 만드는 데 필요한 곱셈 깊이 (보낸 것은 0). 가장 얕게 만드는 (a, b) 를 고른다.
+//   depth[k]: y^k 의 곱셈 깊이 (보낸 것은 0).
+// (a, b) 는 실험 8 에서 학생이 쓰는 split_power 가 정한다. make_plan 은 그것을 모아 깊이와 곱셈 수를 세고,
+// 잘못된 (a, b) 를 걸러낸다.
 // ---------------------------------------------------------------
 struct PowerPlan
 {
@@ -93,44 +96,45 @@ struct PowerPlan
     int mult_count = 0;
 };
 
-inline PowerPlan plan_powers(const std::vector<int> &sent, int D)
+using SplitFn = std::pair<int, int> (*)(int, const std::vector<int> &);
+
+inline PowerPlan make_plan(const std::vector<int> &sent, int D, SplitFn split_power)
 {
-    const int INF = 1000;
-    PowerPlan plan;
-    plan.split.assign(D + 1, { 0, 0 });
-    plan.depth.assign(D + 1, INF);
+    std::set<int> got;
     for (int s : sent)
     {
         if (s >= 1 && s <= D)
         {
-            plan.depth[s] = 0;
+            got.insert(s);
         }
     }
+    if (!got.count(1))
+    {
+        std::cout << std::flush;
+        std::cerr << "\n[오류] 보낸 거듭제곱에 1 (y 자체) 이 없습니다.\n";
+        std::exit(1);
+    }
+    PowerPlan plan;
+    plan.split.assign(D + 1, { 0, 0 });
+    plan.depth.assign(D + 1, 0);
     for (int k = 1; k <= D; k++)
     {
-        if (plan.depth[k] == 0)
+        if (got.count(k))
         {
             continue;
         }
-        for (int a = 1; a <= k / 2; a++)
+        auto [a, b] = split_power(k, sent);
+        if (a < 1 || b < 1 || a + b != k)
         {
-            int d = std::max(plan.depth[a], plan.depth[k - a]) + 1;
-            if (d < plan.depth[k])
-            {
-                plan.depth[k] = d;
-                plan.split[k] = { a, k - a };
-            }
-        }
-        plan.mult_count++;
-    }
-    for (int k = 1; k <= D; k++)
-    {
-        if (plan.depth[k] >= INF)
-        {
-            std::cerr << "[오류] 보낸 거듭제곱으로 y^" << k << " 를 만들 수 없습니다. sent 에 1 을 넣었는지 확인하세요.\n";
+            std::cout << std::flush;
+            std::cerr << "\n[오류] split_power(" << k << ") 가 (" << a << ", " << b << ") 를 돌려줬습니다. "
+                      << "a + b = " << k << " 이고 a, b 는 1 이상이어야 합니다. split_power 를 채웠는지 확인하세요.\n";
             std::exit(1);
         }
+        plan.split[k] = { a, b };
+        plan.depth[k] = std::max(plan.depth[a], plan.depth[b]) + 1;
         plan.max_depth = std::max(plan.max_depth, plan.depth[k]);
+        plan.mult_count++;
     }
     return plan;
 }

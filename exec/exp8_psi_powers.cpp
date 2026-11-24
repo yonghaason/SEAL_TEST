@@ -12,9 +12,27 @@
 using namespace std;
 using namespace seal;
 
+// y^k 를 어떻게 만들지 정한다: y^k = y^a * y^b 인 (a, b) 를 돌려준다. (k 는 sent 에 없는 지수)
+// 규칙
+//   1. k 를 sent 의 원소들의 합으로 쓴다: 남은 값보다 크지 않은 가장 큰 원소를 계속 뺀다.
+//        sent = {1, 2, 4, 8}:  13 -> 8 + 4 + 1,   16 -> 8 + 8          sent = {1}:  5 -> 1 + 1 + 1 + 1 + 1
+//   2. 그 목록의 앞쪽 절반 (개수가 홀수면 하나 더) 의 합이 a, 나머지의 합이 b.
+//        8 + 4 + 1 -> a = 8 + 4 = 12, b = 1        8 + 4 + 2 + 1 -> a = 12, b = 3
+// a, b 는 k 보다 작아서 작은 k 부터 만들면 이미 있다. 깊이는 목록 길이 w 에 대해 ceil(log2 w).
+pair<int, int> split_power(int k, const vector<int> &sent)
+{
+    vector<int> parts; // k = parts 의 합 (큰 것부터)
+    // TODO: 1. parts 채우기 (sent 에 1 이 있으므로 항상 끝난다)
+
+    int a = 0, b = 0;
+    // TODO: 2. parts 의 앞쪽 (parts.size() + 1) / 2 개의 합 -> a,  나머지의 합 -> b
+
+    return { a, b };
+}
+
 // powers 에는 받는 쪽이 보낸 거듭제곱만 들어 있다 (나머지는 빈 암호문).
-// plan.split[k] = (a, b) 이면 y^k = y^a * y^b 로 만든다. (0, 0) 이면 받은 것이라 그대로 둔다.
-// plan 은 작은 k 부터 만들 수 있도록 짜여 있으므로 k = 1, 2, ..., D 순서로 채우면 된다.
+// plan.split[k] = (a, b) 이면 y^k = y^a * y^b 로 만든다 (split_power 가 정한 것). (0, 0) 이면 받은 것이라 그대로 둔다.
+// a, b < k 이므로 k = 1, 2, ..., D 순서로 채우면 된다.
 void compute_powers(vector<Ciphertext> &powers, const PowerPlan &plan, Evaluator &evaluator,
                     const RelinKeys &relin_keys)
 {
@@ -151,7 +169,7 @@ int main()
         }
 
         // 보내는 쪽: 나머지 거듭제곱을 곱셈으로 만들고 r * p(y) 계산
-        PowerPlan plan = plan_powers(sent, B);
+        PowerPlan plan = make_plan(sent, B, split_power);
         Timer tm;
         compute_powers(powers, plan, evaluator, relin_keys);
         for (int k = 1; k <= B; k++)

@@ -51,6 +51,7 @@ cmake -S . -B build
   - `psi_common.h` : PSI 실험 공용 함수 (해싱, 다항식 계수)
 - `solutions/` : 위 실험들의 정답 (학생 파일과 같은 주석 구조)
 - `tools/make_mnist_data.py` : `exec/mnist_data.h` 를 만든 스크립트 (실습에는 필요 없음)
+- `tools/logreg_plain.py` : 실험 6 의 로지스틱 회귀를 평문으로 계산 (W, b 는 `exec/mnist_data.h` 에서 읽음, numpy 필요). `python3 tools/logreg_plain.py 7` 또는 `my.txt`
 - `tools/image_to_vector.py` : 손으로 쓴 숫자 이미지를 실험 6 입력 파일로 바꾸는 스크립트 (numpy, pillow 필요, 교수 시연용)
 - `docs/plan.md` : 실습 전체 계획
 

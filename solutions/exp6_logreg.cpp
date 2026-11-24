@@ -71,9 +71,9 @@ Ciphertext block_inner_product(const Ciphertext &ct_x, const vector<double> &w_s
     evaluator.multiply_plain(ct_x, pt_w, ct_z);
     evaluator.rescale_to_next_inplace(ct_z);
 
-    // (2) 회전-합: step = 512, 256, ..., 1 에 대해 ct_z 를 step 칸 회전한 것을 ct_z 에 더한다
+    // (2) 회전-합: step = 1, 2, 4, ..., 512 에 대해 ct_z 를 step 칸 회전한 것을 ct_z 에 더한다
     //     10 번 하면 슬롯 j 에 원래 슬롯 j ~ j + 1023 의 합이 들어간다
-    for (int step = BLOCK / 2; step >= 1; step /= 2)
+    for (size_t step = 1; step < BLOCK; step *= 2)
     {
         Ciphertext ct_rot;
         evaluator.rotate_vector(ct_z, step, galois_keys, ct_rot);
@@ -127,9 +127,9 @@ int main(int argc, char **argv)
     PublicKey public_key;
     keygen.create_public_key(public_key);
 
-    // 회전 키는 필요한 칸 수 (512, 256, ..., 2, 1) 만 만든다 (실험 4)
+    // 회전 키는 필요한 칸 수 (1, 2, 4, ..., 512) 만 만든다 (실험 4)
     vector<int> steps;
-    for (int step = BLOCK / 2; step >= 1; step /= 2)
+    for (size_t step = 1; step < BLOCK; step *= 2)
     {
         steps.push_back(step);
     }

@@ -44,20 +44,6 @@ vector<double> load_image(int argc, char **argv, string &name)
     return x;
 }
 
-// 28 x 28 이미지를 글자로 출력한다.
-void print_image(const vector<double> &x)
-{
-    for (int r = 0; r < 28; r++)
-    {
-        for (int c = 0; c < 28; c++)
-        {
-            double p = x[r * 28 + c];
-            cout << (p > 0.63 ? "##" : p > 0.24 ? "++" : "  ");
-        }
-        cout << "\n";
-    }
-}
-
 // 암호문 ct_x 와 평문 벡터 w_slots 를 슬롯별로 곱하고, 1024 칸 블록마다 합을 구한 뒤 (회전-합), b_slots 를 더한다.
 // 결과 암호문의 슬롯 1024 j 에  (블록 j 의 내적) + b_slots[1024 j]  가 들어간다. 나머지 슬롯은 쓰지 않는다.
 Ciphertext block_inner_product(const Ciphertext &ct_x, const vector<double> &w_slots, const vector<double> &b_slots,
@@ -156,7 +142,6 @@ int main(int argc, char **argv)
     }
 
     cout << "\ninput: " << image_name << "\n";
-    print_image(x);
     wait_enter("다음: 클라이언트가 이미지를 암호화");
 
     // ---------------------------------------------------------------

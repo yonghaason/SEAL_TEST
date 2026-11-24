@@ -56,7 +56,6 @@ int main()
 
     // -1 이상 1 이하의 랜덤 실수 벡터 x (슬롯은 n / 2 개)
     // 비교용 평문 계산: x^2, x^2 + x, pi x^3 + 0.4 x + 1
-    const double PI = 3.14159265358979;
     mt19937_64 rng(1);
     uniform_real_distribution<double> dist(-1.0, 1.0);
     vector<double> x(encoder.slot_count()), x2(x.size()), x2_plus_x(x.size()), poly(x.size());
@@ -65,7 +64,7 @@ int main()
         x[i] = dist(rng);
         x2[i] = x[i] * x[i];
         x2_plus_x[i] = x2[i] + x[i];
-        poly[i] = PI * x[i] * x[i] * x[i] + 0.4 * x[i] + 1.0;
+        poly[i] = 3.14159265358979 * x[i] * x[i] * x[i] + 0.4 * x[i] + 1.0;
     }
 
     // ---------------------------------------------------------------
@@ -136,6 +135,7 @@ int main()
     //    모든 항이 "곱하고 rescale" 을 두 번씩 거치게 하면 scale 이 정확히 같아진다
     // ---------------------------------------------------------------
     // pi x: 상수 pi 를 인코딩해서 ct_x 에 곱하고 rescale (level 1)
+    const double PI = 3.14159265358979;
     Plaintext pt_pi;
     Ciphertext ct_pix;
     // TODO: PI 를 scale 로 인코딩 -> pt_pi,  ct_x x pt_pi -> ct_pix (multiply_plain),  rescale
